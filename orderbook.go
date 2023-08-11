@@ -57,6 +57,7 @@ type ByBestAsk struct {
 	Limits
 }
 
+// bidder wants as less as possible ask, therefore ask is in ascending order
 func (a ByBestAsk) Len() int           { return len(a.Limits) }
 func (a ByBestAsk) Swap(i, j int)      { a.Limits[i], a.Limits[j] = a.Limits[j], a.Limits[i] }
 func (a ByBestAsk) Less(i, j int) bool { return a.Limits[i].Price < a.Limits[j].Price }
@@ -65,6 +66,7 @@ type ByBestBid struct {
 	Limits
 }
 
+// asker wants as high as possible bid, therefore ask is in descending order
 func (a ByBestBid) Len() int           { return len(a.Limits) }
 func (a ByBestBid) Swap(i, j int)      { a.Limits[i], a.Limits[j] = a.Limits[j], a.Limits[i] }
 func (a ByBestBid) Less(i, j int) bool { return a.Limits[i].Price > a.Limits[j].Price }
@@ -99,15 +101,27 @@ func (l *Limit) DeleteOrder(o *Order) {
 }
 
 func (l *Limit) Fill(o *Order) []Match {
-	matches := []Match{}
+	var (
+		matches        []Match
+		ordersToDelete []*Order
+	)
 
 	for _, order := range l.Orders {
 		match := l.fillOrder(order, o)
 		matches = append(matches, match)
+		l.TotalVolume -= match.SizeFilled
+
+		if order.IsFilled() {
+			ordersToDelete = append(ordersToDelete, order)
+		}
 
 		if o.IsFilled() {
 			break
 		}
+	}
+
+	for _, order := range ordersToDelete {
+		l.DeleteOrder(order)
 	}
 
 	return matches
@@ -170,7 +184,7 @@ func (ob *Orderbook) PlaceMarketOrder(o *Order) []Match {
 
 	if o.Bid {
 		if o.Size > ob.AskTotalVolume() {
-			panic("not enough volume sitting in the books")
+			panic(fmt.Errorf("not enough volume [%.2f] for market order [%.2f]", ob.AskTotalVolume(), o.Size))
 		}
 		// ob.Asks() gives the sorted slice of ask limits
 		for _, limit := range ob.Asks() {
@@ -178,7 +192,14 @@ func (ob *Orderbook) PlaceMarketOrder(o *Order) []Match {
 			matches = append(matches, limitMatches...)
 		}
 	} else {
-
+		if o.Size > ob.BidTotalVolume() {
+			panic(fmt.Errorf("not enough volume [%.2f] for market order [%.2f]", ob.BidTotalVolume(), o.Size))
+		}
+		// ob.Bids() gives the sorted slice of ask limits
+		for _, limit := range ob.Bids() {
+			limitMatches := limit.Fill(o)
+			matches = append(matches, limitMatches...)
+		}
 	}
 
 	return matches
