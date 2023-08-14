@@ -190,15 +190,23 @@ func (ob *Orderbook) PlaceMarketOrder(o *Order) []Match {
 		for _, limit := range ob.Asks() {
 			limitMatches := limit.Fill(o)
 			matches = append(matches, limitMatches...)
+			if len(limit.Orders) == 0 {
+				fmt.Printf("len of limit.Orders of asks at price %.2f is %d", limit.Price, len(limit.Orders))
+				ob.clearLimit(true, limit)
+			}
 		}
 	} else {
 		if o.Size > ob.BidTotalVolume() {
-			panic(fmt.Errorf("not enough volume [%.2f] for market order [%.2f]", ob.BidTotalVolume(), o.Size))
+			panic(fmt.Errorf("not enough volume [%.2f] for market order [%.2f]\n", ob.BidTotalVolume(), o.Size))
 		}
 		// ob.Bids() gives the sorted slice of ask limits
 		for _, limit := range ob.Bids() {
 			limitMatches := limit.Fill(o)
 			matches = append(matches, limitMatches...)
+			if len(limit.Orders) == 0 {
+				fmt.Printf("len of limit.Orders of bids at price %.2f is %d\n", limit.Price, len(limit.Orders))
+				ob.clearLimit(false, limit)
+			}
 		}
 	}
 
@@ -226,6 +234,38 @@ func (ob *Orderbook) PlaceLimitOrder(price float64, o *Order) {
 	}
 
 	limit.AddOrder(o)
+}
+
+func (ob *Orderbook) clearLimit(bid bool, l *Limit) {
+	if bid {
+		delete(ob.BidLimits, l.Price)
+		for i := 0; i < len(ob.bids); i++ {
+			if ob.bids[i] == l {
+				fmt.Println("Hello1")
+				ob.bids = append(ob.bids[:i], ob.bids[i+1:]...)
+			}
+		}
+		// for i := 0; i < len(ob.bids); i++ {
+		// 	if ob.bids[i] == l {
+		// 		ob.bids[i] = ob.bids[len(ob.bids)-1]
+		// 		ob.bids = ob.bids[:len(ob.bids)-1]
+		// 	}
+		// }
+	} else {
+		delete(ob.AskLimits, l.Price)
+		for i := 0; i < len(ob.asks); i++ {
+			if ob.asks[i] == l {
+				fmt.Println("Hello2")
+				ob.asks = append(ob.asks[:i], ob.asks[i+1:]...)
+			}
+		}
+		// for i := 0; i < len(ob.asks); i++ {
+		// 	if ob.asks[i] == l {
+		// 		ob.asks[i] = ob.asks[len(ob.asks)-1]
+		// 		ob.asks = ob.asks[:len(ob.asks)-1]
+		// 	}
+		// }
+	}
 }
 
 func (ob *Orderbook) BidTotalVolume() float64 {

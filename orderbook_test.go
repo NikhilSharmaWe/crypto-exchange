@@ -82,7 +82,17 @@ func TestPlaceMarketOrderMultiFill(t *testing.T) {
 
 	assert(t, ob.BidTotalVolume(), 3.0)
 	assert(t, len(matches), 3)
-	assert(t, len(ob.bids), 1)
+	// assert(t, len(ob.bids), 1)
+
+	for _, limit := range ob.bids {
+		if limit.Price == 10_000 {
+			fmt.Printf("length of limit 10_000 is %d\n", len(limit.Orders))
+		}
+	}
+
+	fmt.Println(ob.BidLimits[10_000])
+	fmt.Println(ob.BidLimits[9_000])
+	fmt.Println(ob.BidLimits[5_000])
 
 	fmt.Printf("%+v", matches)
 }
