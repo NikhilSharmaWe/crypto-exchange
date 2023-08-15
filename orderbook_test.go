@@ -70,29 +70,27 @@ func TestPlaceMarketOrderMultiFill(t *testing.T) {
 	buyOrderA := NewOrder(true, 5)
 	buyOrderB := NewOrder(true, 8)
 	buyOrderC := NewOrder(true, 10)
+	buyOrderD := NewOrder(true, 1)
 
 	ob.PlaceLimitOrder(5_000, buyOrderC)
 	ob.PlaceLimitOrder(10_000, buyOrderA)
 	ob.PlaceLimitOrder(9_000, buyOrderB)
+	ob.PlaceLimitOrder(5_000, buyOrderD)
 
-	assert(t, ob.BidTotalVolume(), 23.0)
+	assert(t, ob.BidTotalVolume(), 24.0)
 
 	sellOrder := NewOrder(false, 20)
 	matches := ob.PlaceMarketOrder(sellOrder)
 
-	assert(t, ob.BidTotalVolume(), 3.0)
+	assert(t, ob.BidTotalVolume(), 4.0)
 	assert(t, len(matches), 3)
-	// assert(t, len(ob.bids), 1)
-
-	for _, limit := range ob.bids {
-		if limit.Price == 10_000 {
-			fmt.Printf("length of limit 10_000 is %d\n", len(limit.Orders))
-		}
-	}
-
-	fmt.Println(ob.BidLimits[10_000])
-	fmt.Println(ob.BidLimits[9_000])
-	fmt.Println(ob.BidLimits[5_000])
+	assert(t, len(ob.bids), 1)
 
 	fmt.Printf("%+v", matches)
+
+	// for _, limit := range ob.bids {
+	// 	if limit.Price == 5_000 {
+	// 		fmt.Printf("number of orders in the limit of price 5_000 is %d", len(limit.Orders))
+	// 	}
+	// }
 }
