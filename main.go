@@ -1,27 +1,114 @@
 package main
 
 import (
+	"context"
+	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
+	"log"
+	"math/big"
 	"net/http"
 	"strconv"
 
 	"github.com/NikhilSharmaWe/crypto-exchange/orderbook"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/labstack/echo/v4"
 )
+
+const exchangePrivateKey = "4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d"
 
 func main() {
 	e := echo.New()
 	e.HTTPErrorHandler = httpErrorHandler
-	ex := NewExchange()
+
+	ex, err := NewExchange(exchangePrivateKey)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	e.GET("/book/:market", ex.handleGetBook)
 	e.POST("/order", ex.handlePlaceOrder)
 	e.DELETE("/order/:id", ex.cancelOrder)
-	// go func() {
-	// 	time.Sleep(time.Second * 10)
-	// 	fmt.Printf("%+v", ex.orderbooks["ETH"].BidLimits)
-	// }()
+
+	client, err := ethclient.Dial("http://localhost:8545")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+	sendersAddress := common.HexToAddress("0x90F8bf6A479f320ead074411a4B0e7944Ea8c9C1")
+	balance, err := client.BalanceAt(ctx, sendersAddress, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Sender's balance before:", balance)
+
+	recieverAddress := common.HexToAddress("0x1dF62f291b2E969fB0849d99D9Ce41e2F137006e")
+	balance, err = client.BalanceAt(ctx, recieverAddress, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Receiver's balance before:", balance)
+
+	privateKey, err := crypto.HexToECDSA("4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	publicKey := privateKey.Public()
+	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
+	if !ok {
+		log.Fatal("error casting public key to ECDSA")
+	}
+
+	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
+
+	nonce, err := client.PendingNonceAt(ctx, fromAddress)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	value := big.NewInt(1000000000000000000)
+	gasLimit := uint64(21000)
+	gasPrice, err := client.SuggestGasPrice(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	toAddress := common.HexToAddress("0x1dF62f291b2E969fB0849d99D9Ce41e2F137006e")
+	tx := types.NewTransaction(nonce, toAddress, value, gasLimit, gasPrice, nil)
+
+	chainID := big.NewInt(1337) // this is the chain id of our server, you can see in the ganache logs
+
+	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// this fails
+	err = client.SendTransaction(context.Background(), signedTx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	balance, err = client.BalanceAt(ctx, sendersAddress, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Sender's balance after:", balance)
+
+	balance, err = client.BalanceAt(ctx, recieverAddress, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Receiver's balance after:", balance)
 
 	e.Start(":3000")
 }
@@ -45,16 +132,23 @@ const (
 )
 
 type Exchange struct {
+	PrivateKey *ecdsa.PrivateKey
 	orderbooks map[Market]*orderbook.Orderbook
 }
 
-func NewExchange() *Exchange {
+func NewExchange(privateKey string) (*Exchange, error) {
 	orderbooks := make(map[Market]*orderbook.Orderbook)
 	orderbooks[MarketETH] = orderbook.NewOrderbook()
 
-	return &Exchange{
-		orderbooks: orderbooks,
+	pk, err := crypto.HexToECDSA(privateKey)
+	if err != nil {
+		return nil, err
 	}
+
+	return &Exchange{
+		PrivateKey: pk,
+		orderbooks: orderbooks,
+	}, nil
 }
 
 type PlaceOrderRequest struct {
