@@ -8,7 +8,6 @@ import (
 )
 
 type Match struct {
-	ID         int64
 	Ask        *Order
 	Bid        *Order
 	SizeFilled float64
@@ -17,6 +16,7 @@ type Match struct {
 
 type Order struct {
 	ID        int64
+	UserID    int64
 	Size      float64
 	Bid       bool
 	Limit     *Limit
@@ -30,9 +30,10 @@ func (o Orders) Len() int           { return len(o) }
 func (o Orders) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 func (o Orders) Less(i, j int) bool { return o[i].Timestamp < o[j].Timestamp }
 
-func NewOrder(bid bool, size float64) *Order {
+func NewOrder(bid bool, size float64, userID int64) *Order {
 	return &Order{
 		ID:        int64(rand.Intn(10000000)),
+		UserID:    userID,
 		Size:      size,
 		Bid:       bid,
 		Timestamp: time.Now().UnixNano(),
@@ -157,7 +158,6 @@ func (l *Limit) fillOrder(a, b *Order) Match {
 	}
 
 	return Match{
-		ID:         a.ID,
 		Ask:        ask,
 		Bid:        bid,
 		SizeFilled: sizeFilled,
