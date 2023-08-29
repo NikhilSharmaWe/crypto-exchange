@@ -102,6 +102,8 @@ func StartServer() {
 	e.GET("/book/:market", ex.handleGetBook)
 	e.POST("/order", ex.handlePlaceOrder)
 	e.DELETE("/order/:id", ex.cancelOrder)
+	e.GET("/book/:market/bid", ex.handleGetBestBid)
+	e.GET("/book/:market/ask", ex.handleGetBestAsk)
 
 	ctx := context.Background()
 	user7Addr := common.HexToAddress("0x28a8746e75304c0780E011BEd21C72cD78cd535E")
@@ -274,6 +276,44 @@ func (ex *Exchange) handleGetBook(c echo.Context) error {
 	return c.JSON(http.StatusOK, orderbookData)
 }
 
+type PriceResponse struct {
+	Price float64
+}
+
+func (ex *Exchange) handleGetBestBid(c echo.Context) error {
+	market := Market(c.Param("market"))
+	ob := ex.orderbooks[market]
+
+	if len(ob.Bids()) == 0 {
+		return fmt.Errorf("the bids are empty")
+	}
+
+	bestBidPrice := ob.Bids()[0].Price
+
+	pr := PriceResponse{
+		Price: bestBidPrice,
+	}
+
+	return c.JSON(http.StatusOK, pr)
+}
+
+func (ex *Exchange) handleGetBestAsk(c echo.Context) error {
+	market := Market(c.Param("market"))
+	ob := ex.orderbooks[market]
+
+	if len(ob.Asks()) == 0 {
+		return fmt.Errorf("the asks are empty")
+	}
+
+	bestAskPrice := ob.Asks()[0].Price
+
+	pr := PriceResponse{
+		Price: bestAskPrice,
+	}
+
+	return c.JSON(http.StatusOK, pr)
+}
+
 func (ex *Exchange) cancelOrder(c echo.Context) error {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -300,6 +340,8 @@ func (ex *Exchange) handlePlaceMarketOrder(market Market, order *orderbook.Order
 		isBid = true
 	}
 
+	totalSizeFilled := 0.0
+	sumPrice := 0.0
 	for i := 0; i < len(matches); i++ {
 		id := matches[i].Bid.ID
 		if isBid {
@@ -310,7 +352,15 @@ func (ex *Exchange) handlePlaceMarketOrder(market Market, order *orderbook.Order
 			Size:  matches[i].SizeFilled,
 			Price: matches[i].Price,
 		}
+
+		totalSizeFilled += matches[i].SizeFilled
+		sumPrice += matches[i].Price
 	}
+
+	avgPrice := sumPrice / float64(len(matches))
+
+	log.Printf("filled market order => type: [%t] | size [%.2f] | userID [%d] | avgPrice [%.2f]\n", order.Bid, totalSizeFilled, order.UserID, avgPrice)
+
 	return matches, matchedOrders
 }
 
@@ -342,25 +392,22 @@ func (ex *Exchange) handlePlaceOrder(c echo.Context) error {
 		if err := ex.handlePlaceLimitOrder(market, placeOrderData.Price, order); err != nil {
 			return err
 		}
-
-		resp := PlaceOrderResponse{
-			OrderID: order.ID,
-		}
-		return c.JSON(200, resp)
 	}
 
 	// market orders
 	if placeOrderData.Type == MarketOrder {
-		matches, matchedOrders := ex.handlePlaceMarketOrder(market, order)
+		matches, _ := ex.handlePlaceMarketOrder(market, order)
 
 		if err := ex.handleMatches(matches); err != nil {
 			return err
 		}
-
-		return c.JSON(200, map[string]any{"matches": matchedOrders})
 	}
 
-	return nil
+	resp := PlaceOrderResponse{
+		OrderID: order.ID,
+	}
+
+	return c.JSON(200, resp)
 }
 
 func (ex *Exchange) handleMatches(matches []orderbook.Match) error {
@@ -399,8 +446,8 @@ func transferETH(client *ethclient.Client, fromPrivKey *ecdsa.PrivateKey, to com
 	}
 
 	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
-	fmt.Printf("from: %+v\n", fromAddress)
-	fmt.Printf("to: %v\n", to)
+	// fmt.Printf("from: %+v\n", fromAddress)
+	// fmt.Printf("to: %v\n", to)
 	nonce, err := client.PendingNonceAt(ctx, fromAddress)
 	if err != nil {
 		return err

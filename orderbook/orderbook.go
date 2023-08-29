@@ -72,7 +72,7 @@ type ByBestBid struct {
 	Limits
 }
 
-// asker wants as high as possible bid, therefore ask is in descending order
+// asker wants as high as possible bid, therefore bid is in descending order
 func (a ByBestBid) Len() int           { return len(a.Limits) }
 func (a ByBestBid) Swap(i, j int)      { a.Limits[i], a.Limits[j] = a.Limits[j], a.Limits[i] }
 func (a ByBestBid) Less(i, j int) bool { return a.Limits[i].Price > a.Limits[j].Price }
@@ -167,11 +167,13 @@ func (l *Limit) fillOrder(a, b *Order) Match {
 }
 
 type Orderbook struct {
+	// since in go we cannot sort maps we add these
 	asks []*Limit
 	bids []*Limit
 
 	mu sync.RWMutex
 
+	// and maps helps in knowing a limit with a particular price exists without ranging over
 	AskLimits map[float64]*Limit
 	BidLimits map[float64]*Limit
 	Orders    map[int64]*Order
@@ -206,7 +208,7 @@ func (ob *Orderbook) PlaceMarketOrder(o *Order) []Match {
 		}
 	} else {
 		if o.Size > ob.BidTotalVolume() {
-			panic(fmt.Errorf("not enough volume [%.2f] for market order [%.2f]\n", ob.BidTotalVolume(), o.Size))
+			panic(fmt.Errorf("not enough volume [%.2f] for market order [%.2f]", ob.BidTotalVolume(), o.Size))
 		}
 		// ob.Bids() gives the sorted slice of ask limits
 		for _, limit := range ob.Bids() {
